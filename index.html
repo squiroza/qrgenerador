@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SQA</title>
+  <style>
+    :root{--accent:#F17922}
+    body{font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; margin:0; background:#f7f7fb; color:#111}
+    .container{max-width:980px;margin:28px auto;padding:20px;background:#fff;border-radius:14px;box-shadow:0 6px 30px rgba(20,20,50,0.06)}
+    h1{font-size:20px;margin:0 0 12px}
+    p.lead{margin:0 0 18px;color:#555}
+    .grid{display:grid;grid-template-columns:1fr 440px;gap:18px}
+    .card{padding:12px;border-radius:10px;background:#fcfcff;border:1px solid #eef0f6}
+    label{display:block;font-size:13px;margin-bottom:6px;color:#333}
+    input[type="text"], input[type="number"], select, textarea{width:100%;padding:10px;border-radius:8px;border:1px solid #d7dbe9;font-size:14px}
+    .row{display:flex;gap:10px}
+    .small{width:120px}
+    button{background:var(--accent);color:#fff;border:0;padding:10px 12px;border-radius:8px;font-weight:600;cursor:pointer}
+    button.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+    #qrHolder{display:flex;align-items:center;justify-content:center;height:100%;padding:18px}
+    .controls{display:flex;flex-direction:column;gap:8px}
+    .field{margin-bottom:8px}
+    .meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .note{font-size:13px;color:#666}
+    .smallNote{font-size:12px;color:#888}
+    footer{margin-top:12px;text-align:right;color:#666;font-size:13px}
+    .inline{display:flex;gap:8px;align-items:center}
+    @media (max-width:920px){.grid{grid-template-columns:1fr;}.container{margin:12px}}
+  </style>
+
+  <!-- QR Code Styling library (works in-browser) -->
+  <script src="https://cdn.jsdelivr.net/npm/qr-code-styling@1.5.0/lib/qr-code-styling.js"></script>
+  <!-- JSZip for ZIP downloads -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.0/jszip.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <h1>Generador de QR para enviar WhatsApp — Mejorado</h1>
+    <p class="lead">Personaliza color, tamaño, logo central (tamaño/margen), y descarga el QR como PNG o dentro de un ZIP. El número local debe tener 10 dígitos; puedes indicar código de país o dejarlo en blanco si prefieres introducir el número internacional completo.</p>
+
+    <div class="grid">
+      <div class="card">
+        <div class="controls">
+
+          <div class="field">
+            <label>Configuración del número</label>
+            <div class="row">
+              <input id="country" class="small" type="text" value="52" maxlength="4" title="Código de país" />
+              <input id="phone" type="text" placeholder="5512345678" maxlength="14" />
+            </div>
+            <div class="inline"><input type="checkbox" id="requireCountry" /><label for="requireCountry" class="smallNote">Requerir código de país</label></div>
+            <div id="phoneError" class="note" style="color:#b00020;display:none"></div>
+          </div>
+
+          <div class="field">
+            <label>Mensaje (se codifica para URL)</label>
+            <textarea id="message" rows="2" placeholder="Hola, te contacto desde..."></textarea>
+            <div class="note">Opcional. No incluir saltos de línea para mejor compatibilidad.</div>
+          </div>
+
+          <div class="field">
+            <label>Opción alternativa: URL completa (si quieres que el QR abra otra URL en vez de WhatsApp)</label>
+            <input id="customUrl" type="text" placeholder="https://ejemplo.com/mi-pagina" />
+            <div class="smallNote">Si introduces una URL válida aquí, el QR apuntará a ella en lugar de wa.me.</div>
+          </div>
+
+          <div class="field">
+            <label>Color del QR (foreground)</label>
+            <input id="color" type="color" value="#000000" />
+          </div>
+
+          <div class="field">
+            <label>Color de fondo</label>
+            <input id="bg" type="color" value="#ffffff" />
+          </div>
+
+          <div class="field">
+            <label>Tamaño (px)</label>
+            <input id="size" type="number" min="128" max="2000" value="420" />
+          </div>
+
+          <div class="field">
+            <label>Logo en el centro (opcional, .png/.jpg)</label>
+            <input id="logoFile" type="file" accept="image/*" />
+            <div class="note">Mantén el logo cuadrado para mejor resultado. Puedes ajustar tamaño y margen abajo.</div>
+          </div>
+
+          <div class="field">
+            <label>Tamaño del logo (porcentaje del QR)</label>
+            <input id="logoSize" type="range" min="8" max="40" value="20" />
+            <div class="smallNote">Valor actual: <span id="logoSizeVal">20</span>%</div>
+          </div>
+
+          <div class="field">
+            <label>Margen del logo (px) — margen transparente alrededor del logo</label>
+            <input id="logoMargin" type="number" min="0" max="40" value="6" />
+          </div>
+
+          <div class="field meta">
+            <button id="generate">Generar QR</button>
+            <button id="download" class="ghost" disabled>Descargar PNG</button>
+            <button id="downloadZip" class="ghost" disabled>Descargar ZIP (png)</button>
+            <button id="openWA" class="ghost" disabled>Abrir WhatsApp</button>
+          </div>
+
+          <div class="field note">Nota técnica: WhatsApp no permite pre-cargar archivos multimedia vía wa.me URLs. Si necesitas enviar archivos automáticamente, se requieren APIs oficiales o integraciones de terceros.</div>
+        </div>
+      </div>
+
+      <div class="card" style="display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;">
+        <div id="qrHolder" style="width:100%;height:100%;min-height:420px;display:flex;align-items:center;justify-content:center;">
+          <div id="canvasArea"></div>
+        </div>
+        <div style="width:100%;display:flex;justify-content:space-between;align-items:center;gap:10px">
+          <div class="note">Previsualización — haz clic en "Generar QR"</div>
+          <div id="status" class="note"></div>
+        </div>
+      </div>
+    </div>
+
+    <footer>Generador avanzado • Compatible con móviles • Hecho con JavaScript</footer>
+  </div>
+
+  <script>
+    // Elementos
+    const phone = document.getElementById('phone');
+    const country = document.getElementById('country');
+    const requireCountry = document.getElementById('requireCountry');
+    const message = document.getElementById('message');
+    const customUrl = document.getElementById('customUrl');
+    const color = document.getElementById('color');
+    const bg = document.getElementById('bg');
+    const size = document.getElementById('size');
+    const logoFile = document.getElementById('logoFile');
+    const logoSize = document.getElementById('logoSize');
+    const logoSizeVal = document.getElementById('logoSizeVal');
+    const logoMargin = document.getElementById('logoMargin');
+    const generateBtn = document.getElementById('generate');
+    const downloadBtn = document.getElementById('download');
+    const downloadZipBtn = document.getElementById('downloadZip');
+    const openWABtn = document.getElementById('openWA');
+    const canvasArea = document.getElementById('canvasArea');
+    const status = document.getElementById('status');
+    const phoneError = document.getElementById('phoneError');
+
+    logoSize.addEventListener('input', ()=> logoSizeVal.textContent = logoSize.value);
+
+    let qr = null;
+
+    function validarTelefono(v){
+      const digits = v.replace(/\D/g, '');
+      // allow 10 (local) or >10 (international full)
+      if(digits.length === 10) return {type:'local', value:digits};
+      if(digits.length > 10) return {type:'international', value:digits};
+      return null;
+    }
+
+    function isValidURL(str){
+      try{ new URL(str); return true;}catch(e){return false}
+    }
+
+    function buildWhatsAppURL(countryCode, phoneDigits, msg){
+      const cc = (countryCode||'').replace(/\D/g,'');
+      const local = phoneDigits.replace(/\D/g,'');
+      let full = '';
+      if(cc) full = cc + local; else full = local; // if cc blank, assume phoneDigits already international
+      const encoded = encodeURIComponent(msg || '');
+      return `https://wa.me/${full}${encoded ? ('?text='+encoded) : ''}`;
+    }
+
+    function createQR(options){
+      canvasArea.innerHTML = '';
+      try{
+        const qrCode = new QRCodeStyling({
+          width: options.size,
+          height: options.size,
+          data: options.data,
+          image: options.image || undefined,
+          dotsOptions: { color: options.color, type: 'rounded' },
+          backgroundOptions: { color: options.bg },
+          imageOptions: { crossOrigin: 'anonymous', margin: Number(options.imageMargin) },
+        });
+        qrCode.append(canvasArea);
+        return qrCode;
+      }catch(err){
+        console.error(err);
+        status.textContent = 'Error al crear QR: ' + err.message;
+        return null;
+      }
+    }
+
+    function getLogoDataURL(file){
+      return new Promise((res,rej)=>{
+        if(!file) return res(null);
+        const reader = new FileReader();
+        reader.onload = ()=>res(reader.result);
+        reader.onerror = ()=>rej(new Error('No se pudo leer el logo'));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function generar(){
+      status.textContent = '';
+      phoneError.style.display = 'none';
+
+      const phoneValidated = validarTelefono(phone.value);
+      if(!phoneValidated){
+        phoneError.style.display = 'block';
+        phoneError.textContent = 'El número debe tener al menos 10 dígitos. Ej: 5512345678 o 525512345678 (internacional).';
+        downloadBtn.disabled = true;
+        downloadZipBtn.disabled = true;
+        openWABtn.disabled = true;
+        return;
+      }
+
+      if(requireCountry.checked && !country.value.trim()){
+        phoneError.style.display = 'block';
+        phoneError.textContent = 'Se requiere código de país.';
+        return;
+      }
+
+      // Decide target URL
+      let target = '';
+      if(customUrl.value.trim()){
+        if(isValidURL(customUrl.value.trim())) target = customUrl.value.trim();
+        else { phoneError.style.display = 'block'; phoneError.textContent = 'La URL personalizada no es válida.'; return; }
+      } else {
+        const cc = country.value.trim();
+        target = buildWhatsAppURL(cc, phoneValidated.value, message.value.trim());
+      }
+
+      const opts = {
+        size: Number(size.value) || 420,
+        color: color.value || '#000000',
+        bg: bg.value || '#ffffff',
+        image: null,
+        data: target,
+        imageMargin: Number(logoMargin.value) || 6
+      };
+
+      // load logo if any
+      if(logoFile.files && logoFile.files[0]){
+        try{
+          opts.image = await getLogoDataURL(logoFile.files[0]);
+        }catch(e){ console.warn('logo error', e); }
+      }
+
+      qr = createQR(opts);
+      if(qr){
+        downloadBtn.disabled = false;
+        downloadZipBtn.disabled = false;
+        openWABtn.disabled = false;
+        status.textContent = 'QR generado — puedes abrir, descargar o empaquetar en ZIP.';
+      }
+    }
+
+    generateBtn.addEventListener('click', generar);
+
+    downloadBtn.addEventListener('click', async ()=>{
+      if(!qr) return;
+      try{
+        const blob = await qr.getRawData('png');
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'whatsapp-qr.png';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      }catch(err){
+        try{
+          const dataUrl = await qr.getDataUrl();
+          const a = document.createElement('a');
+          a.href = dataUrl;
+          a.download = 'whatsapp-qr.png';
+          a.click();
+        }catch(e){
+          alert('No se pudo descargar el QR: '+(e.message||e));
+        }
+      }
+    });
+
+    downloadZipBtn.addEventListener('click', async ()=>{
+      if(!qr) return;
+      try{
+        const blob = await qr.getRawData('png');
+        const arrayBuffer = await blob.arrayBuffer();
+        const zip = new JSZip();
+        zip.file('whatsapp-qr.png', arrayBuffer);
+        const content = await zip.generateAsync({type:'blob'});
+        const url = URL.createObjectURL(content);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'whatsapp-qr.zip';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      }catch(err){
+        alert('Error creando ZIP: ' + (err.message||err));
+      }
+    });
+
+    openWABtn.addEventListener('click', ()=>{
+      const phoneValidated = validarTelefono(phone.value);
+      if(!phoneValidated){ alert('El número debe tener al menos 10 dígitos.'); return; }
+      if(customUrl.value.trim()){
+        if(isValidURL(customUrl.value.trim())) window.open(customUrl.value.trim(), '_blank');
+        else alert('La URL personalizada no es válida.');
+        return;
+      }
+      const waURL = buildWhatsAppURL(country.value.trim(), phoneValidated.value, message.value.trim());
+      window.open(waURL, '_blank');
+    });
+
+    // allow Enter to generate
+    phone.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') generar(); });
+
+    // initial
+    phone.value = '';
+  </script>
+</body>
+</html>
